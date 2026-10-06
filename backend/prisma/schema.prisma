@@ -1,0 +1,403 @@
+// RuralRise — Prisma schema (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  YOUTH
+  EMPLOYER
+  ADMIN
+}
+
+enum WorkType {
+  LOCAL_JOB
+  REMOTE_JOB
+  PART_TIME
+  APPRENTICESHIP
+  INTERNSHIP
+  FREELANCE
+  GIG
+  SELF_EMPLOYMENT
+  SELL_PRODUCT_SERVICE
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+  DEMO
+}
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  SHORTLISTED
+  INTERVIEW
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ListingStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+  REMOVED
+}
+
+model User {
+  id            String       @id @default(cuid())
+  email         String       @unique
+  passwordHash  String
+  name          String
+  role          Role         @default(YOUTH)
+  phone         String?
+  district      String?
+  state         String?
+  avatarColor   String       @default("#2B704E")
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  profile            YouthProfile?
+  organization       Organization?
+  applications       Application[]
+  savedOpportunities SavedOpportunity[]
+  userSkills         UserSkill[]
+  enrollments        TrainingEnrollment[]
+  businessPlans      BusinessPlan[]
+  notifications      Notification[]
+  opportunityViews   OpportunityView[]
+  auditLogs          AuditLog[]
+  verificationsDone  VerificationReview[]
+  marketplaceListings MarketplaceListing[]
+
+  @@index([role])
+}
+
+model YouthProfile {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  education       String?
+  village         String?
+  district        String?
+  state           String?
+  preferredRadiusKm Int    @default(25)
+  interests       String[]
+  skills          Json     @default("[]") // free-form skill names
+  availability    String?
+  experience      String?
+  languages       String[]
+  careerGoals     String?
+  profileVisible  Boolean  @default(true) // visibility control
+  completion      Int      @default(0)
+  updatedAt       DateTime @updatedAt
+}
+
+model Organization {
+  id          String  @id @default(cuid())
+  ownerId     String  @unique
+  owner       User    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  name        String
+  about       String?
+  district    String?
+  state       String?
+  website     String?
+  contactEmail String?
+  verified    Boolean @default(false)
+  createdAt   DateTime @default(now())
+  opportunities Opportunity[]
+}
+
+model Category {
+  id    String @id @default(cuid())
+  slug  String @unique
+  name  String
+  icon  String @default("briefcase")
+  description String?
+  opportunities Opportunity[]
+  trainingPrograms TrainingProgram[]
+  businessIdeas     BusinessIdea[]
+  marketplaceListings MarketplaceListing[]
+}
+
+model Opportunity {
+  id            String @id @default(cuid())
+  title         String
+  slug          String @unique
+  description   String
+  categoryId    String
+  category      Category @relation(fields: [categoryId], references: [id])
+  organizationId String?
+  organization  Organization? @relation(fields: [organizationId], references: [id])
+  providerName  String?
+  workType      WorkType
+  isRemote      Boolean @default(false)
+  village       String?
+  district      String?
+  state         String?
+  pincode       String?
+  compensationMin Int?
+  compensationMax Int?
+  paymentBasis  String? // "monthly", "per_task", "per_day", "commission"
+  eligibility   String?
+  timeCommitment String?
+  applicationInstructions String?
+  sourceUrl     String?
+  sourceLabel   String?
+  requiredEducation String?
+  minAge        Int?
+  maxAge        Int?
+  deadline      DateTime?
+  publishedAt   DateTime @default(now())
+  expiresAt     DateTime?
+  status        ListingStatus @default(ACTIVE)
+  verification  VerificationStatus @default(PENDING)
+  verificationNote String?
+  isDemo        Boolean @default(false)
+  viewCount     Int @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  skills      OpportunitySkill[]
+  applications Application[]
+  savedBy     SavedOpportunity[]
+  views       OpportunityView[]
+  reviews     VerificationReview[]
+
+  @@index([categoryId, status, verification])
+  @@index([district])
+  @@index([workType])
+}
+
+model Skill {
+  id       String @id @default(cuid())
+  name     String @unique
+  slug     String @unique
+  category String?
+  description String?
+  opportunities OpportunitySkill[]
+  userSkills  UserSkill[]
+  trainingPrograms TrainingProgramSkill[]
+}
+
+model OpportunitySkill {
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  skillId       String
+  skill         Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  required      Boolean @default(true)
+
+  @@id([opportunityId, skillId])
+}
+
+model UserSkill {
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  skillId  String
+  skill    Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  level    Int @default(3) // 1-5
+  verified Boolean @default(false)
+
+  @@id([userId, skillId])
+}
+
+model Application {
+  id            String @id @default(cuid())
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        ApplicationStatus @default(SUBMITTED)
+  coverNote     String?
+  contactPhone  String?
+  external      Boolean @default(false)
+  employerNote  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([opportunityId, userId])
+  @@index([userId, status])
+  @@index([opportunityId])
+}
+
+model SavedOpportunity {
+  userId        String
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  createdAt     DateTime @default(now())
+
+  @@id([userId, opportunityId])
+}
+
+model OpportunityView {
+  id            String @id @default(cuid())
+  userId        String
+  user          User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  viewedAt      DateTime @default(now())
+
+  @@index([userId, viewedAt])
+}
+
+model TrainingProgram {
+  id           String @id @default(cuid())
+  title        String
+  slug         String @unique
+  description  String
+  providerName String
+  providerVerified Boolean @default(false)
+  isDemo       Boolean @default(false)
+  categoryId   String?
+  category     Category? @relation(fields: [categoryId], references: [id])
+  duration     String?
+  mode         String? // online / offline / hybrid
+  fee          String? // "Free" or amount
+  language     String?
+  link         String?
+  certification Boolean @default(false)
+  expiresAt    DateTime?
+  createdAt    DateTime @default(now())
+  skills       TrainingProgramSkill[]
+  enrollments  TrainingEnrollment[]
+}
+
+model TrainingProgramSkill {
+  trainingProgramId String
+  trainingProgram   TrainingProgram @relation(fields: [trainingProgramId], references: [id], onDelete: Cascade)
+  skillId           String
+  skill             Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([trainingProgramId, skillId])
+}
+
+model TrainingEnrollment {
+  id               String @id @default(cuid())
+  trainingProgramId String
+  trainingProgram  TrainingProgram @relation(fields: [trainingProgramId], references: [id], onDelete: Cascade)
+  userId           String
+  user             User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  progress         Int @default(0) // 0-100
+  completed        Boolean @default(false)
+  startedAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([trainingProgramId, userId])
+}
+
+model Scheme {
+  id           String @id @default(cuid())
+  title        String
+  slug         String @unique
+  ministry     String?
+  category     String? // e.g. skilling, grant, employment, entrepreneurship
+  description  String
+  eligibility  String?
+  benefits     String?
+  applySteps   String[] @default([])
+  officialLink String?
+  deadline     DateTime?
+  lastChecked  DateTime?
+  isDemo       Boolean @default(false)
+  createdAt    DateTime @default(now())
+}
+
+model BusinessIdea {
+  id          String @id @default(cuid())
+  title       String
+  slug        String @unique
+  description String
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id])
+  skills      String[] @default([])
+  resources   String[] @default([]) // locally available resources needed
+  startupCostMin Int?
+  startupCostMax Int?
+  monthlyIncomeMin Int?
+  monthlyIncomeMax Int?
+  isDemo      Boolean @default(false)
+  marketDemandNotes String?
+}
+
+model BusinessPlan {
+  id        String @id @default(cuid())
+  userId    String
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ideaId    String?
+  title     String
+  targetCustomers String?
+  resources String?
+  startupCost String?
+  pricingNotes String?
+  marketingPlan String?
+  milestones Json @default("[]") // [{ label, done }]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model MarketplaceListing {
+  id         String @id @default(cuid())
+  sellerId   String
+  seller     User @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  title      String
+  description String
+  categoryId String?
+  category   Category? @relation(fields: [categoryId], references: [id])
+  price      String?
+  village    String?
+  district   String?
+  imageUrl   String?
+  contactMethod String? // phone / email / whatsapp
+  contactValue  String?
+  status     ListingStatus @default(ACTIVE)
+  verification VerificationStatus @default(PENDING)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model VerificationReview {
+  id            String @id @default(cuid())
+  adminId       String
+  admin         User @relation(fields: [adminId], references: [id])
+  opportunityId String?
+  opportunity   Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  entityType    String // OPPORTUNITY | MARKETPLACE | ORGANIZATION
+  entityId      String?
+  action        String // VERIFIED | REJECTED
+  reason        String?
+  createdAt     DateTime @default(now())
+}
+
+model Notification {
+  id        String @id @default(cuid())
+  userId    String
+  user      User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String?
+  link      String?
+  read      Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, read])
+}
+
+model AuditLog {
+  id        String @id @default(cuid())
+  userId    String?
+  user      User? @relation(fields: [userId], references: [id])
+  action    String
+  detail    Json?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
